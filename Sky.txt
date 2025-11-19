@@ -1,0 +1,120 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local ChangeBody = Remotes:WaitForChild("ChangeCharacterBody")
+local Wear = Remotes:WaitForChild("Wear")
+
+local BODY_ID = 100839513065432
+local ANIMATION_ID = 101852027997337
+
+local Humanoid, Animator, CurrentTrack
+local Loaded = false
+local ScriptActive = true
+
+local function SafeInvoke(fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then
+        warn("Error:", err)
+    end
+end
+
+local function SetupCharacter(char)
+    task.defer(function()
+        Humanoid = char:WaitForChild("Humanoid")
+        Animator = Humanoid:FindFirstChildOfClass("Animator")
+        if not Animator then
+            Animator = Instance.new("Animator")
+            Animator.Parent = Humanoid
+        end
+        Loaded = true
+        Humanoid.Died:Connect(function()
+            ScriptActive = false
+            if CurrentTrack then
+                pcall(function() CurrentTrack:Stop(0) end)
+            end
+            warn("Script stopped after reset/death.")
+        end)
+    end)
+end
+
+SetupCharacter(LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait())
+
+local function ApplyBody()
+    if not ScriptActive then return end
+    task.spawn(function()
+        task.wait(0.2)
+        SafeInvoke(function()
+            ChangeBody:InvokeServer({ BODY_ID })
+        end)
+    end)
+end
+
+local function ReapplyAccessories()
+    if not ScriptActive or not Humanoid then return end
+    task.spawn(function()
+        local desc = Humanoid:GetAppliedDescription()
+        for _, accessory in ipairs(desc:GetAccessories(true)) do
+            if not ScriptActive then break end
+            if accessory.AssetId then
+                SafeInvoke(function()
+                    Wear:InvokeServer(accessory.AssetId)
+                end)
+                task.wait(0.05)
+            end
+        end
+    end)
+end
+
+local function PlayAnimation()
+    if not ScriptActive then return end
+    task.defer(function()
+        if not Animator then return end
+        if CurrentTrack then
+            pcall(function() CurrentTrack:Stop(0) end)
+        end
+        local anim = Instance.new("Animation")
+        anim.AnimationId = "rbxassetid://" .. ANIMATION_ID
+        local track = Animator:LoadAnimation(anim)
+        track.Priority = Enum.AnimationPriority.Action4
+        track.Looped = true
+        track:Play(0.2, 1, 1)
+        CurrentTrack = track
+    end)
+end
+
+local function FullEffect()
+    if not ScriptActive then return end
+    if not Loaded then
+        repeat task.wait(0.1) until Loaded or not ScriptActive
+    end
+    if not ScriptActive then return end
+    ApplyBody()
+    task.wait(0.3)
+    ReapplyAccessories()
+    task.wait(0.3)
+    PlayAnimation()
+    print("Skybox by ShadowDev")
+end
+
+FullEffect()
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if not ScriptActive then return end
+    SetupCharacter(char)
+    task.wait(1)
+    if ScriptActive then
+        FullEffect()
+    end
+end)
+
+task.spawn(function()
+    while task.wait(6) do
+        if not ScriptActive then break end
+        if not (CurrentTrack and CurrentTrack.IsPlaying) then
+            PlayAnimation()
+        end
+    end
+end)
+-- by Neymar
